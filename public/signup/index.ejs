@@ -1,0 +1,113 @@
+<% include ../_partials/head %>
+    <title>Sign Up</title>
+  </head>
+  <body>
+    <% include ../_partials/navbar %>
+    <div class="container">
+        <h1 class="mt-1">
+          Sign Up
+          <a class="btn btn-secondary btn-sm float-right mt-2" href="/login" role="button">I already have an account</a>
+        </h1>
+      <form action="/users/newAccount" method="POST">
+        <div class="form-group" id="usernameInputGroup">
+          <label for="usernameInput">Username:</label>
+
+          <input type="text" name="username" id="usernameInput" placeholder="Add a username..." class="form-control"
+          <% if(typeof refill !== "undefined" && typeof refill.username !== "undefined"){ %>
+            value="<%- refill.username %>"
+          <% } %>>
+
+          <% if(typeof validatorErrors !== "undefined" && typeof validatorErrors.username !== "undefined"){ %>
+            <p class="text-danger"><%= validatorErrors.username.msg %></p>
+          <% } %>
+
+          <% if(typeof SQLErrors !== "undefined" && typeof SQLErrors.username !== "undefined"){ %>
+            <p class="text-danger"><%= SQLErrors.username %></p>
+          <% } %>
+
+        </div>
+        <div class="form-group" id="emailInputGroup">
+          <label for="emailInput">Email:</label>
+          <input type="text" name="email" id="emailInput" placeholder="Add an email..." class="form-control"
+          <% if(typeof refill !== "undefined" && typeof refill.email !== "undefined"){ %>
+            value="<%- refill.email %>"
+          <% } %>>
+
+          <% if(typeof validatorErrors !== "undefined" && typeof validatorErrors.email !== "undefined"){ %>
+            <p class="text-danger"><%= validatorErrors.email.msg %></p>
+          <% } %>
+
+          <% if(typeof SQLErrors !== "undefined" && typeof SQLErrors.email !== "undefined"){ %>
+            <p class="text-danger"><%= SQLErrors.email %></p>
+          <% } %>
+
+        </div>
+        <div class="form-group" id="passwordInputGroup">
+          <label for="passwordInput">Password:</label>
+          <input type="password" name="password" id="passwordInput" placeholder="Choose a password..." class="form-control">
+
+          <% if(typeof validatorErrors !== "undefined" && typeof validatorErrors.password !== "undefined"){ %>
+            <p class="text-danger"><%= validatorErrors.password.msg %></p>
+          <% } %>
+
+        </div>
+        <div class="form-group" id="genderInputGroup">
+          <label for="genderInput">Gender:</label>
+          <select name="gender" id="genderInput" class="form-control">
+            <option disabled value
+            <% if(typeof refill === "undefined" || typeof refill.gender === "undefined"){ %>
+              <%- "selected" %>
+            <% } %>>
+              Select an option...
+            </option>
+            <option value="male"
+            <% if(typeof refill !== "undefined" && typeof refill.gender !== "undefined" && refill.gender === "male"){ %>
+              <%- "selected" %>
+            <% } %>>
+              Male
+            </option>
+            <option value="female"
+            <% if(typeof refill !== "undefined" && typeof refill.gender !== "undefined" && refill.gender === "female"){ %>
+              <%- "selected" %>
+            <% } %>>
+              Female
+            </option>
+            <option value="other"
+            <% if(typeof refill !== "undefined" && typeof refill.gender !== "undefined" && refill.gender === "other"){ %>
+              <%- "selected" %>
+            <% } %>>
+              Other
+            </option>
+          </select>
+
+          <% if(typeof validatorErrors !== "undefined" && typeof validatorErrors.gender !== "undefined"){ %>
+            <p class="text-danger"><%= validatorErrors.gender.msg %></p>
+          <% } %>
+
+        </div>
+        <div class="form-group" id="termsInputGroup">
+          <input type="checkbox" id="termsCheckbox" name="terms"
+          <% if(typeof refill !== "undefined" && typeof refill.terms !== "undefined"){ %>
+            value="<%- refill.terms %>">
+          <% } else { %>
+            <%- ">" %>
+          <% } %>
+
+          <label for="termsCheckbox">
+            I agree to the <a href="/terms">terms and conditions</a>
+          </label>
+
+          <% if(typeof validatorErrors !== "undefined" && typeof validatorErrors.terms !== "undefined"){ %>
+            <p class="text-danger"><%= validatorErrors.terms.msg %></p>
+          <% } %>
+
+        </div>
+        <button type="submit" class="btn btn-primary">Create an account</button>
+      </form>
+    </div>
+
+    <% include ../_partials/includeScripts %>
+    <script src="signUp.js"></script>
+
+  </body>
+</html>

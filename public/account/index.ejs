@@ -1,0 +1,47 @@
+<% include ../_partials/head %>
+    <title><%= username %> - profile</title>
+  </head>
+  <body>
+    <% include ../_partials/navbar %>
+    <div class="container">
+      <h1 class="mt-1">
+        <%= username %>
+        <% if(typeof editing == "undefined" || !editing){ %>
+          <% if(isCurrentUser){ %>
+            <a href="/account/<%- username %>/edit" class="btn btn-primary float-right mt-2">Edit profile</a>
+          <% } else{ %>
+            <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2">Send a message</a>
+          <% } %>
+        <% } %>
+      </h1>
+      <br>
+      <img src="..<% if(typeof editing !== "undefined" && editing){ %>/..<% } %>/_icons/profilePicPlaceholder.png" alt="" class="rounded" width="150px" height="150px">
+      <br>
+      <% if(typeof editing !== "undefined" && editing){ %>
+        <form action="/users/<%- username %>/edit" method="POST">
+          <div class="form-group">
+            <label for="bioInput">Bio:</label>
+            <textarea name="bio" id="bioInput" cols="30" rows="3" class="form-control" style="resize: none"><% if(bio !== null){ %><%= bio %><% } %></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary ml-lg-2">Save changes</button>
+          <a href="/account/<%- username %>" class="btn btn-danger float-right mr-lg-2">Cancel</a>
+        </form>
+      <% } else{ %>
+        <% if(bio == null){ %>
+          <p class="font-weight-light">
+            No bio
+          </p>
+        <% } else{ %>
+          <p class="font-weight">
+            <%= bio %>
+          </p>
+        <% } %>
+      <% } %>
+      <p class="font-weight-normal">
+        Joined: <%= registrationDate %>
+      </p>
+    </div>
+
+    <% include ../_partials/includeScripts %>
+  </body>
+</html>
