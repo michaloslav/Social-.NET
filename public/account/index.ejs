@@ -7,7 +7,7 @@
       <h1 class="mt-1">
         <%= username %>
         <% if(typeof editing == "undefined" || !editing){ %>
-          <% if(isCurrentUser){ %>
+          <% if(typeof isCurrentUser !== "undefined" && isCurrentUser){ %>
             <a href="/account/<%- username %>/edit" class="btn btn-primary float-right mt-2">Edit profile</a>
           <% } else{ %>
             <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2">Send a message</a>
@@ -15,7 +15,31 @@
         <% } %>
       </h1>
       <br>
-      <img src="..<% if(typeof editing !== "undefined" && editing){ %>/..<% } %>/_icons/profilePicPlaceholder.png" alt="" class="rounded" width="150px" height="150px">
+      <% if(typeof editing !== "undefined" && editing){ %>
+        <link rel="stylesheet" href="../hoverEffect.css">
+        <div class="col-md-4 center-block" id="changeTheProfilePicDiv">
+          <div class="section-box-nine">
+            <figure>
+              <a href="/users/<%- username %>/edit/profilePic" class="btn btn-read">New<br>profile<br>picture</a>
+            </figure>
+            <% if(typeof newProfilePic !== "undefined" && newProfilePic){ %>
+              <img src="../../_data/temp/newProfilePics/<%- username %>.jpg" class="img-responsive" width="150px" height="150px">
+            <% } else{ %>
+              <% if(typeof hasProfilePic !== "undefined" && hasProfilePic){ %>
+                <img src="../_data/users/profilePics/<%- username %>.jpg" alt="" class="img-responsive" width="150px" height="150px">
+              <% } else{ %>
+                <img src="../_icons/profilePicPlaceholder.png" alt="" class="img-responsive" width="150px" height="150px">
+              <% } %>
+            <% } %>
+          </div>
+        </div>
+      <% } else{ %>
+        <% if(typeof hasProfilePic !== "undefined" && hasProfilePic){ %>
+          <img src="../_data/users/profilePics/<%- username %>.jpg" alt="" class="rounded" width="150px" height="150px">
+        <% } else{ %>
+          <img src="../_icons/profilePicPlaceholder.png" alt="" class="rounded" width="150px" height="150px">
+        <% } %>
+      <% } %>
       <br>
       <% if(typeof editing !== "undefined" && editing){ %>
         <form action="/users/<%- username %>/edit" method="POST">
@@ -23,8 +47,15 @@
             <label for="bioInput">Bio:</label>
             <textarea name="bio" id="bioInput" cols="30" rows="3" class="form-control" style="resize: none"><% if(bio !== null){ %><%= bio %><% } %></textarea>
           </div>
+          <% if(typeof newProfilePic !== "undefined" && newProfilePic){ %>
+            <input type="hidden" name="newProfilePic" value="true">
+          <% } %>
           <button type="submit" class="btn btn-primary ml-lg-2">Save changes</button>
           <a href="/account/<%- username %>" class="btn btn-danger float-right mr-lg-2">Cancel</a>
+        </form>
+
+        <form action="/users/<%- username %>/edit/profilePic" method="POST" style="display: none" id="changeTheProfilePicForm" enctype="multipart/form-data">
+          <input type="file" name="profilePic" id="changeTheProfilePicInput" accept="image/*">
         </form>
       <% } else{ %>
         <% if(bio == null){ %>
@@ -43,5 +74,14 @@
     </div>
 
     <% include ../_partials/includeScripts %>
+    <% if(typeof editing !== "undefined" && editing){ %>
+      <script src="../editAccount.js"></script>
+    <% } %>
+    <% if(typeof newProfilePic !== "undefined" && newProfilePic){ %>
+      <script>
+        var newProfilePic = true;
+      </script>
+    <% } %>
+
   </body>
 </html>

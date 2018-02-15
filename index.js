@@ -1,14 +1,17 @@
-const express = require("express");
-const app = express();
-const bodyParser = require("body-parser");
-const path = require("path");
-const mysql = require("mysql");
-const { check, validationResult } = require('express-validator/check');
-const http = require("http").createServer(app);
-const io = require("socket.io")(http);
-const session = require("express-session");
-const MySQLStore = require('express-mysql-session')(session);
-const dateFormat = require("dateformat");
+const express = require("express"),
+      app = express(),
+      bodyParser = require("body-parser"),
+      path = require("path"),
+      mysql = require("mysql"),
+      { check, validationResult } = require('express-validator/check'),
+      http = require("http").createServer(app),
+      io = require("socket.io")(http),
+      session = require("express-session"),
+      MySQLStore = require('express-mysql-session')(session),
+      dateFormat = require("dateformat"),
+      formidable = require('formidable'),
+      fs = require("fs"),
+      jimp = require("jimp");
 
 // connect to mysql
 const con = mysql.createConnection({
@@ -34,6 +37,7 @@ app.use(express.static(path.join(__dirname, "public")));
 //body parser middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: false}));
+
 
 // express session
 app.use(session({
@@ -112,14 +116,16 @@ app.get("/account/:username", (req, res) => {
           username: result[0].username,
           registrationDate: dateFormat(result[0].registrationDate, "mmm yyyy"),
           bio: result[0].bio,
-          isCurrentUser: result[0].username == req.session.username
+          isCurrentUser: result[0].username == req.session.username,
+          hasProfilePic: result[0].hasProfilePic == 1
         });
       }
       else{
         res.render("account", {
           username: result[0].username,
           registrationDate: dateFormat(result[0].registrationDate, "mmm yyyy"),
-          bio: result[0].bio
+          bio: result[0].bio,
+          hasProfilePic: result[0].hasProfilePic == 1
         })
       }
     }
@@ -140,7 +146,8 @@ app.get("/account/:username/edit", (req, res) => {
         registrationDate: dateFormat(result[0].registrationDate, "mmm yyyy"),
         bio: result[0].bio,
         isCurrentUser: true,
-        editing: true
+        editing: true,
+        newProfilePic: req.query.newProfilePic
       });
     }
   })
@@ -271,13 +278,69 @@ app.post("/users/:username/edit", (req, res) => {
 
       // update the bio
       con.query("UPDATE users SET bio = ? where ID = ?", [req.body.bio, req.session.userID], (err, result) => {
-        if(err) throw err;
-        res.redirect("/account/" + req.session.username);
+        if (err) throw err
       })
+
+      if(req.body.newProfilePic){
+        fs.rename(path.join(__dirname, "public/_data/temp/newProfilePics/" + req.session.username + ".jpg"), path.join(__dirname, "public/_data/users/profilePics/" + req.session.username + ".jpg"), (err) => {
+          if (err) throw err;
+          con.query("UPDATE users SET hasProfilePic = 1 WHERE ID = ?", [req.session.userID], (err, result) => {
+            if(err) throw err;
+          })
+        });
+      }
+
+      res.redirect("/account/" + req.session.username)
     }
   })
 })
 
+app.post("/users/:username/edit/profilePic", (req, res) => {
+
+  //check if the username exists in the database
+  con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
+    if(err) throw err;
+
+    //the username exists and it's the user who is currently logged in
+    if(result.length == 1 && req.session.username && req.session.username == result[0].username){
+
+      //upload the profile pic
+      var form = new formidable.IncomingForm();
+      form.keepExtensions = true;
+      form.uploadDir = "data/temp"
+      form.parse(req, (err, fields, files) => {
+        if(err) throw err;
+      });
+      form.on("file", (field, file) => {
+
+        //save the image
+        let imgPath = path.join(__dirname, "public/_data/temp/newProfilePics/" + req.session.username + "." + file.name.split(".")[file.name.split(".").length - 1]);
+        console.log("Uploaded an img to " + file.path);
+        console.log("Moving the file to " + imgPath);
+        fs.rename(file.path, imgPath, (err) => {
+          if (err) throw err;
+        });
+
+        //convert the image
+        jimp.read(imgPath, (err, img) => {
+          if(err) throw err;
+          img.resize(256, 256)
+             .quality(60)
+             .write(imgPath.split(".").slice(0, -1).join(".") + ".jpg");
+        })
+        //if the original extension was different than jpg then delete the original file
+        if(file.name.split(".")[file.name.split(".").length - 1] != "jpg"){
+          fs.unlink(imgPath, (err) => {
+            if (err) throw err;
+          })
+        }
+
+        req.session.hasUploadedProfilePic = true; // the user has an unsaved profile picture
+        res.redirect("/account/" + req.session.username + "/edit?newProfilePic=true") //redirect back with the GET variable
+      });
+    }
+  })
+})
 
 io.on("connection", (socket) => {
 
@@ -299,6 +362,17 @@ io.on("connection", (socket) => {
         socket.emit("validateTheEmailErrors", {error: "The email has already been used"});
       }
     })
+  })
+
+  // if the user leaves while editing their profile and they have an unsaved profile picture in the temp folder, delete it
+  socket.on("leftWhileEditingTheProfile", (data) => {
+
+    // if there is a profile pic in the temp folder, delete it
+    let imgPath = path.join(__dirname, "public/_data/temp/newProfilePics/" + req.session.username + ".jpg");
+    fs.unlink(imgPath, (err) => {
+      if (err) throw err;
+    })
+
   })
 })
 
