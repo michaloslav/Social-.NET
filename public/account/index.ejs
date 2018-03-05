@@ -7,10 +7,12 @@
       <h1 class="mt-1">
         <%= username %>
         <% if(typeof editing == "undefined" || !editing){ %>
-          <% if(typeof isCurrentUser !== "undefined" && isCurrentUser){ %>
-            <a href="/account/<%- username %>/edit" class="btn btn-primary float-right mt-2">Edit profile</a>
-          <% } else{ %>
-            <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2">Send a message</a>
+          <% if(typeof currentUser !== "undefined"){ %>
+            <% if(typeof isCurrentUser !== "undefined" && isCurrentUser){ %>
+              <a href="/account/<%- username %>/edit" class="btn btn-primary float-right mt-2">Edit profile</a>
+            <% } else{ %>
+              <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2">Send a message</a>
+            <% } %>
           <% } %>
         <% } %>
       </h1>

@@ -27,6 +27,9 @@ $(() => {
     if($("#usernameInput").val().length < 8) {
       showError("username", "The username must be at least 8 characters long");
     }
+    if(/[^a-zA-Z \d]/.test($("#usernameInput").val())) {
+      showError("username", "The username can only contain letters and numbers");
+    }
     socket.emit("validateTheUsername", {
       username: $("#usernameInput").val()
     })
@@ -52,8 +55,8 @@ $(() => {
     if($("#passwordInput").val().length < 8) {
       showError("password", "The password must be at least 8 characters long");
     }
-      if(!/[0-9]/g.test($("#passwordInput").val())) {
-        showError("password", "The password must contain at least one number");
-      }
+    if(!/[0-9]/g.test($("#passwordInput").val())) {
+      showError("password", "The password must contain at least one number");
+    }
   })
 })

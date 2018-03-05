@@ -11,7 +11,9 @@ const express = require("express"),
       dateFormat = require("dateformat"),
       formidable = require('formidable'),
       fs = require("fs"),
-      jimp = require("jimp");
+      jimp = require("jimp"),
+      metaphone = require("metaphone"),
+      stemmer = require("stemmer");
 
 // connect to mysql
 const con = mysql.createConnection({
@@ -46,6 +48,41 @@ app.use(session({
   saveUninitialized: false,
   store: sessionStore
 }));
+
+//update the metaphone in the database
+function updateMetaphone(username){
+  con.query("SELECT * FROM users WHERE username = ?", [username], (err, result) => {
+    if(err) throw err;
+    var newMetaphone = metaphone(stemmer([result[0].username, result[0].bio].join(" ")));
+
+    // if there are numbers, add them to the metaphone
+    if(result[0].username.match(/\d+/g)){
+      newMetaphone += result[0].username.match(/\d+/g).join("");
+    }
+    if(result[0].bio && result[0].bio.match(/\d+/g)){
+      newMetaphone += result[0].bio.match(/\d+/g).join("");
+    }
+
+    con.query("UPDATE users SET metaphone = ? WHERE ID = ?", [newMetaphone, result[0].ID], (err, result) => {
+      if(err) throw err;
+    })
+  })
+}
+
+
+// uncomment to update ALL metaphones
+/*
+con.query("SELECT * FROM users", (err, result) => {
+  if(err) throw err;
+  for(var i in result){
+    updateMetaphone(result[i].username);
+  }
+})
+*/
+
+
+// init the list of clients
+var sockets = {};
 
 // rendering and stuff
 app.get("/", (req, res) => {
@@ -158,7 +195,8 @@ app.all("/users/newAccount", [
   // express validator
   check("username")
     .exists().withMessage("The username can't be empty")
-    .isLength({ min: 8 }).withMessage("The username must be at least 8 characters long"),
+    .isLength({ min: 8 }).withMessage("The username must be at least 8 characters long")
+    .matches(/[^a-zA-Z \d]/).withMessage("The username can only contain letters and numbers"),
   check("email")
     .isEmail().withMessage("The email doesn't look right..."),
   check("password", "The password has to be at least 8 characterss long and contain one number")
@@ -210,8 +248,12 @@ app.all("/users/newAccount", [
           if(req.body.gender == "female") var genderChar = "F";
           if(req.body.gender == "other") var genderChar = "O";
 
-          con.query("INSERT INTO users(username, email, password, gender) VALUES(?, ?, ?, ?)", [req.body.username, req.body.email, req.body.password, genderChar], (err, result) => {
+          //create the account
+          con.query("INSERT INTO users(username, email, password, gender, metaphone) VALUES(?, ?, ?, ?, ?)",
+          [req.body.username, req.body.email, req.body.password, genderChar, metaphone(stemmer(req.body.username))],
+          (err, result) => {
             if(err) throw err;
+
             //log in
             con.query("SELECT ID FROM users WHERE username = ?", [req.body.username], (err, result) => {
               if(err) throw err;
@@ -279,6 +321,7 @@ app.post("/users/:username/edit", (req, res) => {
       // update the bio
       con.query("UPDATE users SET bio = ? where ID = ?", [req.body.bio, req.session.userID], (err, result) => {
         if (err) throw err
+        updateMetaphone(req.session.username);
       })
 
       if(req.body.newProfilePic){
@@ -342,6 +385,83 @@ app.post("/users/:username/edit/profilePic", (req, res) => {
   })
 })
 
+app.get("/search", (req, res) => {
+  var searchQuery = metaphone(stemmer(req.query.search));
+
+  // if there are numbers, add them to the query
+  if(req.query.search.match(/\d+/g)){
+    searchQuery += req.query.search.match(/\d+/g).join("");
+  }
+
+  con.query("SELECT * FROM users WHERE metaphone LIKE ?", ["%" + searchQuery + "%"], (err, result) => {
+    if(err) throw err;
+    var searchResults = [];
+    if(result.length > 0){
+      for(var i in result){
+        searchResults.push({username: result[i].username, bio: result[i].bio, hasProfilePic: result[i].hasProfilePic});
+      }
+    }
+    if(req.session.username){
+      res.render("search", {
+        currentUser: req.session.userID,
+        searchQuery: req.query.search,
+        searchResults: searchResults
+      })
+    }
+    else{
+      res.render("search", {
+        searchQuery: req.query.search,
+        searchResults: searchResults
+      })
+    }
+  })
+})
+
+app.get("/messages/:username", (req, res) => {
+
+  // check if the user is logged in
+  if(!req.session.username) {
+    res.redirect("/");
+    res.end();
+  }
+
+  else{
+    // check if the username in the URL is real
+    con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
+      if(err) throw err;
+
+      if(result.length == 0) {
+        res.redirect("/");
+        res.end();
+      }
+      else{
+
+        var toUser = result[0].ID;
+        var toUserUsername = result[0].username;
+
+        con.query("SELECT * FROM messages WHERE ID LIKE ? ORDER BY `messages`.`sentTime` ASC",
+        [(req.session.userID > toUser ? toUser + ":" + req.session.userID : req.session.userID + ":" + toUser ) + ":%"],
+        (err, result) => {
+          if(err) throw err;
+          var messages = [];
+          result.forEach((row) => {
+            messages.push({fromOrTo: (row.fromUser == req.session.userID ? "From" : "To"),
+              message: row.message
+            })
+          })
+          res.render("messages", {
+            currentUser: req.session.userID,
+            toUser: toUser,
+            toUserUsername: toUserUsername,
+            messages: messages
+          })
+        })
+      }
+    })
+  }
+})
+
+
 io.on("connection", (socket) => {
 
   // creating an account live feedback
@@ -373,6 +493,70 @@ io.on("connection", (socket) => {
       if (err) throw err;
     })
 
+  })
+
+  // store the username and the user into the sockets variable
+  socket.on("rememberTheSocket", (data) => {
+    if(!sockets[data.user]) sockets[data.user] = [socket.id]
+    else{
+      if(!sockets[data.user].includes(socket.id)) sockets[data.user].push(socket.id);
+    }
+  })
+
+  // forget the socket when the user leaves the page
+  socket.on("forgetTheSocket", (data) => {
+    if(typeof sockets[data.user] !== "undefined" && sockets[data.user].includes(socket.id)){
+      let index = sockets[data.user].indexOf(socket.id);
+      if(index !== -1) sockets[data.user].splice(index, 1);
+    }
+  })
+
+
+  // a message was sent
+  socket.on("messageSent", (data) => {
+
+    // get the user inputs
+    var fromUser = data.fromUser;
+    var toUser = data.toUser;
+
+    //check if the fromUser is correct
+    if(typeof sockets[fromUser] !== "undefined" && sockets[fromUser].includes(socket.id)){
+      // get the usersID
+      var usersID = (toUser > fromUser ? fromUser + ":" + toUser : toUser + ":" + fromUser);
+
+      con.query("SELECT counter FROM messagecounter WHERE ID = ?", [usersID], (err, result) => {
+        if(err) throw err;
+
+        // if there isn't a message counter yet, create one
+        if(result.length == 0){
+
+          var messageID = usersID + ":1";
+          con.query("INSERT INTO messagecounter(ID, counter) VALUES (?, ?)", [usersID, 1], (err, result) => {
+            if(err) throw err;
+          })
+        }
+
+        // if it already exists, augment it
+        else{
+
+          var messageID = usersID + ":" + result[0].counter;
+
+          con.query("UPDATE messagecounter SET counter = counter + 1 WHERE ID = ?", [usersID], (err, result) => {
+            if(err) throw err;
+          })
+        }
+
+        con.query("INSERT INTO messages(ID, message, fromUser) VALUES(?, ?, ?)", [messageID, data.message, data.fromUser],
+        (err, result) =>{
+          if(err) throw err;
+
+          // if the other user is online, emit the message to them
+          io.to(sockets[toUser]).emit("messageReceived", {
+            message: data.message
+          })
+        })
+      })
+    }
   })
 })
 

@@ -1,0 +1,41 @@
+<% include ../_partials/head %>
+    <title><%= toUserUsername %> - messages</title>
+    <link rel="stylesheet" type="text/css" href="messages.css">
+  </head>
+  <body>
+    <% include ../_partials/navbar %>
+    <div class="container p-0">
+      <div class="row mt-3 mx-sm-4 h-100">
+        <div class="col-3 h-100 pr-0 pr-sm-2">
+          <div class="list-group border" style="height: 80%">
+            <a class="list-group-item border px-0 px-sm-2 py-sm-3 pb-2 d-inline-block text-truncate btn btn-light" href="/messages/<%- toUserUsername %>">
+              <%= toUserUsername %>
+            </a>
+          </div>
+        </div>
+        <script type="text/javascript">var fromUser=<%= currentUser %>;var toUser=<%= toUser %>;</script>
+        <div class="col-9 border border-primary rounded p-0 py-2 list-group" id="messagesDiv" style="height: 80%">
+          <% messages.forEach((message) => { %>
+            <div class="list-group-item borderless messageContainer">
+              <div class="message message<%- message.fromOrTo %>">
+                <%= message.message %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+      <div class="fixed-bottom mx-4 mb-3 mx-sm-5">
+        <div class="input-group">
+          <input type="text" class="form-control mr-2" id="messageInput" autofocus>
+          <div class="input-group-append">
+            <button type="finish" class="btn" id="messageSend">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <% include ../_partials/includeScripts %>
+    <script src="messages.js"></script>
+  </body>
+</html>

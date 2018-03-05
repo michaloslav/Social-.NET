@@ -1,0 +1,40 @@
+html,body{
+  height:100%;
+}
+.container {
+  height:100%;
+}
+#messagesDiv{
+	overflow: auto;
+}
+.messageContainer{
+  /* position: relative; */
+	width: 100%;
+	height: auto;
+	/* min-height: 20px; */
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.message{
+	min-width: 20px;
+	min-height: 20px;
+	padding: 6px;
+	border-radius: 16px;
+  display: inline-block;
+}
+.messageFrom{
+	background-color: #49b2f3;
+	float: right;
+	border: 1px solid #49b2f3;
+	color: #FFFFFF;
+  margin-left: 20px;
+}
+.messageTo{
+	background-color: #FFFFFF;
+	float: left;
+	border: 1px solid #DEDEDE;
+  margin-right: 20px;
+}
+.borderless{
+  border: 0px;
+}
