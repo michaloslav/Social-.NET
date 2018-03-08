@@ -69,6 +69,53 @@ function updateMetaphone(username){
   })
 }
 
+// add a user to the front of the recentlytexted table in the database
+function addToRecentlyTexted(userID, otherUser){
+
+  con.query("SELECT usernames FROM recentlytexted WHERE ID = ?", [userID], (err, result) => {
+
+    switch(result.length){
+
+      //if there isn't a row for this user, create one and insert the other user into it
+      case 0:
+        con.query("INSERT INTO recentlytexted(ID, usernames) VALUES (?, ?)", [userID, JSON.stringify([otherUser])],
+        (err, result) =>{
+          if(err) throw err;
+        })
+
+        break;
+
+      // if there is one, everything is fine, get the data and update it
+      case 1:
+        var usernames = JSON.parse(result[0].usernames);
+
+        // check if the array alread contains the other user
+        if(usernames.includes(otherUser)){
+
+          // remove the username we're adding to the beginning
+          let index = usernames.indexOf(otherUser)
+          if(index > -1){
+            usernames.splice(index, 1)
+          }
+        }
+
+        // add the other user to the beginning of the array
+        usernames.unshift(otherUser)
+
+
+        con.query("UPDATE recentlytexted SET usernames = ? WHERE ID = ?", [JSON.stringify(usernames), userID],
+        (err, result) => {
+          if(err) throw err;
+        })
+
+        break;
+
+      // if there is more than one then there's something wrong, throw an error to notify the admin
+      default:
+        throw "Error adding to the recentlytexted table, there are more than one rows corresponding to the ID";
+    }
+  })
+}
 
 // uncomment to update ALL metaphones
 /*
@@ -107,9 +154,16 @@ app.get("/signup", (req, res) => {
 
 app.get("/terms", (req, res) => {
   if(req.session.username){
-    res.render("terms", {
-      currentUser: req.session.userID
-    });
+
+    con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+    [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+      let messageNotificationCount = result.length;
+
+      res.render("terms", {
+        currentUser: req.session.userID,
+        messageNotificationCount: messageNotificationCount
+      })
+    })
   }
   else{
     res.render("terms");
@@ -118,10 +172,17 @@ app.get("/terms", (req, res) => {
 
 app.get("/about", (req, res) => {
   if(req.session.username){
-    res.render("about", {
-      currentUser: req.session.userID,
-      activePage: "about"
-    });
+
+    con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+    [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+      let messageNotificationCount = result.length;
+
+      res.render("about", {
+        currentUser: req.session.userID,
+        activePage: "about",
+        messageNotificationCount: messageNotificationCount
+      })
+    })
   }
   else{
     res.render("about", {
@@ -147,15 +208,29 @@ app.get("/account/:username", (req, res) => {
 
     //the username exists
     if(result.length == 1){
+
+      // store the info from the database
+      let username = result[0].username,
+          registrationDate = result[0].registrationDate,
+          bio = result[0].bio,
+          hasProfilePic = result[0].hasProfilePic;
+
       if(req.session.username){
-        res.render("account", {
-          currentUser: req.session.userID,
-          username: result[0].username,
-          registrationDate: dateFormat(result[0].registrationDate, "mmm yyyy"),
-          bio: result[0].bio,
-          isCurrentUser: result[0].username == req.session.username,
-          hasProfilePic: result[0].hasProfilePic == 1
-        });
+
+        con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+        [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+          let messageNotificationCount = result.length;
+
+          res.render("account", {
+            currentUser: req.session.userID,
+            username: username,
+            registrationDate: dateFormat(registrationDate, "mmm yyyy"),
+            bio: bio,
+            isCurrentUser: username == req.session.username,
+            hasProfilePic: hasProfilePic == 1,
+            messageNotificationCount: messageNotificationCount
+          })
+        })
       }
       else{
         res.render("account", {
@@ -177,15 +252,27 @@ app.get("/account/:username/edit", (req, res) => {
 
     //the username exists and it's the user who is currently logged in
     if(result.length == 1 && req.session.username && req.session.username == result[0].username){
-      res.render("account", {
-        currentUser: req.session.userID,
-        username: result[0].username,
-        registrationDate: dateFormat(result[0].registrationDate, "mmm yyyy"),
-        bio: result[0].bio,
-        isCurrentUser: true,
-        editing: true,
-        newProfilePic: req.query.newProfilePic
-      });
+
+      // store the user info from the database
+      let username = result[0].username,
+          registrationDate = result[0].registrationDate,
+          bio = result[0].bio;
+
+      con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+      [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+        let messageNotificationCount = result.length;
+
+        res.render("account", {
+          currentUser: req.session.userID,
+          username: username,
+          registrationDate: dateFormat(registrationDate, "mmm yyyy"),
+          bio: bio,
+          isCurrentUser: true,
+          editing: true,
+          newProfilePic: req.query.newProfilePic,
+          messageNotificationCount: messageNotificationCount
+        })
+      })
     }
   })
 })
@@ -196,7 +283,7 @@ app.all("/users/newAccount", [
   check("username")
     .exists().withMessage("The username can't be empty")
     .isLength({ min: 8 }).withMessage("The username must be at least 8 characters long")
-    .matches(/[^a-zA-Z \d]/).withMessage("The username can only contain letters and numbers"),
+    .not().matches(/[^a-zA-Z \d]/).withMessage("The username can only contain letters and numbers"),
   check("email")
     .isEmail().withMessage("The email doesn't look right..."),
   check("password", "The password has to be at least 8 characterss long and contain one number")
@@ -270,7 +357,8 @@ app.all("/users/newAccount", [
 
 //login
 app.all("/users/login", (req, res) => {
-  con.query("SELECT * FROM users WHERE username = ? OR email = ?", [req.body.usernameOrEmail, req.body.usernameOrEmail], (err, result) => {
+  con.query("SELECT * FROM users WHERE username = ? OR email = ?", [req.body.usernameOrEmail, req.body.usernameOrEmail],
+  (err, result) => {
     if(err) throw err;
 
     //username or email is correct
@@ -325,7 +413,8 @@ app.post("/users/:username/edit", (req, res) => {
       })
 
       if(req.body.newProfilePic){
-        fs.rename(path.join(__dirname, "public/_data/temp/newProfilePics/" + req.session.username + ".jpg"), path.join(__dirname, "public/_data/users/profilePics/" + req.session.username + ".jpg"), (err) => {
+        fs.rename(path.join(__dirname, "public/_data/temp/newProfilePics/" + req.session.username + ".jpg"),
+        path.join(__dirname, "public/_data/users/profilePics/" + req.session.username + ".jpg"), (err) => {
           if (err) throw err;
           con.query("UPDATE users SET hasProfilePic = 1 WHERE ID = ?", [req.session.userID], (err, result) => {
             if(err) throw err;
@@ -402,10 +491,17 @@ app.get("/search", (req, res) => {
       }
     }
     if(req.session.username){
-      res.render("search", {
-        currentUser: req.session.userID,
-        searchQuery: req.query.search,
-        searchResults: searchResults
+
+      con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+      [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+        let messageNotificationCount = result.length;
+
+        res.render("search", {
+          currentUser: req.session.userID,
+          searchQuery: req.query.search,
+          searchResults: searchResults,
+          messageNotificationCount: messageNotificationCount
+        })
       })
     }
     else{
@@ -414,6 +510,23 @@ app.get("/search", (req, res) => {
         searchResults: searchResults
       })
     }
+  })
+})
+
+// redirect to the last texted user
+app.get("/messages", (req, res) => {
+
+  // get the ID of the person that the user last texted/was texted from
+  con.query("SELECT usernames FROM recentlytexted WHERE ID = ?", [req.session.userID], (err, result) => {
+    if(err) throw err;
+
+    // get the username of the first person in the array
+    con.query("SELECT username FROM users WHERE ID = ?", [JSON.parse(result[0].usernames)[0]], (err, result) => {
+      if(err) throw err;
+
+      // redirect
+      res.redirect("/messages/" + result[0].username);
+    })
   })
 })
 
@@ -426,6 +539,7 @@ app.get("/messages/:username", (req, res) => {
   }
 
   else{
+
     // check if the username in the URL is real
     con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
       if(err) throw err;
@@ -438,23 +552,68 @@ app.get("/messages/:username", (req, res) => {
 
         var toUser = result[0].ID;
         var toUserUsername = result[0].username;
+        var messageLikeStatement = (req.session.userID > toUser ? toUser + ":" + req.session.userID : req.session.userID + ":" + toUser ) + ":%";
 
-        con.query("SELECT * FROM messages WHERE ID LIKE ? ORDER BY `messages`.`sentTime` ASC",
-        [(req.session.userID > toUser ? toUser + ":" + req.session.userID : req.session.userID + ":" + toUser ) + ":%"],
-        (err, result) => {
-          if(err) throw err;
-          var messages = [];
-          result.forEach((row) => {
-            messages.push({fromOrTo: (row.fromUser == req.session.userID ? "From" : "To"),
-              message: row.message
+        // get the recentlytexted
+        con.query("SELECT usernames FROM recentlytexted WHERE ID = ?", [req.session.userID], (err, result) => {
+
+          var recentlyTextedIDs = result.length == 1 ? JSON.parse(result[0].usernames) : [toUser];
+
+          // get the actual usernames from the IDs (the recentlytexted table only contains ID numbers)
+          con.query("SELECT ID, username FROM users WHERE ID IN(" + recentlyTextedIDs.join(",") + ") ORDER BY FIELD(ID, " + recentlyTextedIDs.join(",") + ")", (err, result) => {
+
+            var recentlyTexted = [];
+            result.forEach((row) => {
+              recentlyTexted.push({userID: row.ID,
+                username: row.username
+              })
+            })
+
+            // get the messages
+            con.query("SELECT * FROM messages WHERE ID LIKE ? ORDER BY `messages`.`sentTime` ASC",
+            [messageLikeStatement], (err, result) => {
+              if(err) throw err;
+              var messages = [];
+              result.forEach((row) => {
+                messages.push({fromOrTo: (row.fromUser == req.session.userID ? "From" : "To"),
+                  message: row.message
+                })
+              })
+
+              // get the unseen messages for each of the users
+              con.query("SELECT message, fromUser FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
+              [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
+                if(err) throw err;
+                let messageNotificationCount = result.length;
+
+                // unseen messages for each user separately
+                var unseenMessageCounterForEachUser = {};
+                result.forEach((row) => {
+                  // if the fromUser of the row is already in the array, increment the
+                  if(typeof unseenMessageCounterForEachUser[row.fromUser] != "undefined") unseenMessageCounterForEachUser[row.fromUser]++;
+
+                  // if the fromUser isn't in the array, put him there and set the value to one
+                  else unseenMessageCounterForEachUser[row.fromUser] = 1;
+                })
+
+                res.render("messages", {
+                  currentUser: req.session.userID,
+                  toUser: toUser,
+                  toUserUsername: toUserUsername,
+                  recentlyTexted: recentlyTexted,
+                  messages: messages,
+                  messageNotificationCount: messageNotificationCount,
+                  unseenMessageCounterForEachUser: unseenMessageCounterForEachUser
+                })
+              })
             })
           })
-          res.render("messages", {
-            currentUser: req.session.userID,
-            toUser: toUser,
-            toUserUsername: toUserUsername,
-            messages: messages
-          })
+        })
+
+        // update the seen parameter
+        con.query("UPDATE messages SET seen = 1 WHERE fromUser = ? AND ID LIKE ? AND seen = 0",
+        [toUser, messageLikeStatement], (err, result) => {
+          if(err) throw err;
         })
       }
     })
@@ -546,17 +705,44 @@ io.on("connection", (socket) => {
           })
         }
 
-        con.query("INSERT INTO messages(ID, message, fromUser) VALUES(?, ?, ?)", [messageID, data.message, data.fromUser],
-        (err, result) =>{
+        // save the actual message
+        con.query("INSERT INTO messages(ID, message, fromUser) VALUES(?, ?, ?)",
+        [messageID, data.message, data.fromUser], (err, result) =>{
           if(err) throw err;
 
           // if the other user is online, emit the message to them
           io.to(sockets[toUser]).emit("messageReceived", {
-            message: data.message
+            message: data.message,
+            fromUser: data.fromUser,
+            messageID: messageID
           })
+
+          // also emit a messageNotification to update the navbar
+          io.to(sockets[toUser]).emit("messageNotification")
         })
+
+        // call the function to update the recentlytexted table in the database for both users
+        addToRecentlyTexted(fromUser, toUser);
+        addToRecentlyTexted(toUser, fromUser);
       })
     }
+  })
+
+  socket.on("messageSeen", (data) => {
+    con.query("UPDATE messages SET seen = 1 WHERE ID = ?", [data.messageID], (err, result) => {
+      if(err) throw err;
+    })
+  })
+
+  // MESSAGE RECEIVED ->  MESSAGE RECEIVED NOT IN THE RECENTLY TEXTED LIST -> MESSAGE RECEIVED NOT IN THE RECENTLY TEXTED LIST RESPONSE
+  socket.on("messageReceivedNotInTheRecentlyTextedList", (data) => {
+    // get the username of the fromUser
+    con.query("SELECT username FROM users WHERE ID = ?", [data.fromUser], (err, result) => {
+      socket.emit("messageReceivedNotInTheRecentlyTextedListResponse", {
+        fromUser: data.fromUser,
+        fromUserUsername: result[0].username
+      })
+    })
   })
 })
 

@@ -7,13 +7,23 @@
     <div class="container p-0">
       <div class="row mt-3 mx-sm-4 h-100">
         <div class="col-3 h-100 pr-0 pr-sm-2">
-          <div class="list-group border" style="height: 80%">
-            <a class="list-group-item border px-0 px-sm-2 py-sm-3 pb-2 d-inline-block text-truncate btn btn-light" href="/messages/<%- toUserUsername %>">
-              <%= toUserUsername %>
-            </a>
+          <div class="list-group border" style="height: 80%" id="recentlyTextedList">
+            <% recentlyTexted.forEach((recentlyTextedRow) => { %>
+              <a class="list-group-item border px-0 px-sm-2 py-sm-3 pb-2 d-inline-block text-truncate btn btn-light
+              <% if(recentlyTextedRow.username == toUserUsername){ %>
+                active
+              <% } %>
+              "
+              href="/messages/<%- recentlyTextedRow.username %>" id="recentlyTextedLinkUser<%- recentlyTextedRow.userID %>">
+                <%= recentlyTextedRow.username %>
+                <% if(typeof unseenMessageCounterForEachUser[recentlyTextedRow.userID] != undefined){ %>
+                  <span class="badge badge-pill badge-info" id="messageNotificationFromUser<%- recentlyTextedRow.userID %>"><%= unseenMessageCounterForEachUser[recentlyTextedRow.userID] %></span>
+                <% } %>
+              </a>
+            <% }) %>
           </div>
         </div>
-        <script type="text/javascript">var fromUser=<%= currentUser %>;var toUser=<%= toUser %>;</script>
+        <script type="text/javascript">var fromUser=<%= currentUser %>;var toUser=<%= toUser %>; var toUserUsername="<%= toUserUsername %>";</script>
         <div class="col-9 border border-primary rounded p-0 py-2 list-group" id="messagesDiv" style="height: 80%">
           <% messages.forEach((message) => { %>
             <div class="list-group-item borderless messageContainer">

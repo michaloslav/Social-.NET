@@ -20,9 +20,12 @@
         <% if(typeof activePage !== "undefined" && activePage == "messages"){%>
           active
         <% } %>">
-          <a class="nav-link" href="/messages">Messages
+          <a class="nav-link" href="/messages" id="navbarMessagesLink">Messages
           <% if(typeof activePage !== "undefined" && activePage == "messages"){ %>
             <span class="sr-only">(current)</span>
+          <% } %>
+          <% if(typeof messageNotificationCount !== "undefined" && messageNotificationCount != 0){ %>
+            <span class="badge badge-pill badge-info" id="navbarMessageNotificationBadge"><%= messageNotificationCount %></span>
           <% } %>
         </a>
       </li>
@@ -95,5 +98,14 @@
         user: <%- currentUser %>
       })
     }
+
+    // if a message is received, update the navbar with a notification
+    socket.on("messageNotification", (data) => {
+      // if there already is a badge, increment its value
+      if($("#navbarMessageNotificationBadge").length == 1) $("#navbarMessageNotificationBadge").text(Number($("#navbarMessageNotificationBadge").text()) + 1)
+
+      //if the notification badge doesn't exist, create it
+      else $("#navbarMessagesLink").append('<span class="badge badge-pill badge-info" id="navbarMessageNotificationBadge">1</span>')
+    })
   </script>
 <% } %>
