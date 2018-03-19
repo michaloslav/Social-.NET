@@ -38,3 +38,6 @@ html,body{
 .borderless{
   border: 0px;
 }
+#recentlyTextedList{
+	overflow: auto;
+}

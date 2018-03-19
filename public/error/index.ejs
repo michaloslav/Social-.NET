@@ -1,0 +1,40 @@
+<% include ../_partials/head %>
+    <title>
+      <% if(errorInfo.message == null){ %>
+        Error
+      <% } else { %>
+        <%= errorInfo.message %>
+      <% } %>
+    </title>
+  </head>
+  <body>
+    <% if(typeof dontLoadNavbar == "undefined" || !dontLoadNavbar){ %>
+      <% include ../_partials/navbar %>
+    <% } %>
+    <div class="container my-2">
+      <div class="text-center">
+        <% if(errorInfo.status !== null){ %>
+          <h1><%= errorInfo.status %></h1>
+        <% } %>
+        <h4 class="text-danger my-2 ">
+          <% if(errorInfo.message == null){ %>
+            Sorry, something went wrong :(
+          <% } else { %>
+            <%= errorInfo.message %>
+          <% } %>
+        </h4>
+        <img src="../_icons/puzzled.png" alt="Error" class=" my-2">
+        <p class="text-info my-2 font-weight-bold">Please go back and try to do that again</p>
+      </div>
+      <% if(errorInfo.additionalInfo !== null){ %>
+        <div class="my-3">
+          <button class="btn btn-light" type="button" data-toggle="collapse" data-target="#moreInfoDiv">Click here for more information.</button>
+          <div id="moreInfoDiv" class="collapse">
+              <%= errorInfo.additionalInfo %>
+          </div>
+        </div>
+      <% } %>
+    </div>
+    <% include ../_partials/includeScripts %>
+  </body>
+</html>

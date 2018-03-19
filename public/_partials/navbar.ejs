@@ -1,5 +1,12 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <a class="navbar-brand" href="/">Social .NET</a>
+
+  <a href="/messages" class="d-lg-none" id="navbarMessageMobileNotificationLink">
+  <% if(typeof messageNotificationCount !== "undefined" && messageNotificationCount != 0){ %>
+    <span class="badge badge-pill badge-info" id="navbarMobileMessageNotificationBadge"><%= messageNotificationCount %></span>
+  <% } %>
+  </a>
+
   <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
     <span class="navbar-toggler-icon"></span>
   </button>
@@ -65,6 +72,11 @@
           <a href="/login" class="btn btn-outline-success mx-0 mx-sm-2 mt-2 mt-lg-0">Log In</a>
         <% } %>
       </li>
+      <% if(typeof currentUser !== "undefined"){ %>
+        <li class="nav-item">
+          <a href="/newPost" class="btn btn-primary mx-0 mx-sm-2 mt-2 mt-lg-0">Post</a>
+        </li>
+      <% } %>
     </ul>
   </div>
 </nav>
@@ -101,11 +113,15 @@
 
     // if a message is received, update the navbar with a notification
     socket.on("messageNotification", (data) => {
-      // if there already is a badge, increment its value
-      if($("#navbarMessageNotificationBadge").length == 1) $("#navbarMessageNotificationBadge").text(Number($("#navbarMessageNotificationBadge").text()) + 1)
 
-      //if the notification badge doesn't exist, create it
+      // if the badges already exist, increment their values; if they don't, create them
+      // big screen notification
+      if($("#navbarMessageNotificationBadge").length == 1) $("#navbarMessageNotificationBadge").text(Number($("#navbarMessageNotificationBadge").text()) + 1)
       else $("#navbarMessagesLink").append('<span class="badge badge-pill badge-info" id="navbarMessageNotificationBadge">1</span>')
+
+      // small screen notification
+      if($("#navbarMobileMessageNotificationBadge").length == 1) $("#navbarMobileMessageNotificationBadge").text(Number($("#navbarMobileMessageNotificationBadge").text()) + 1)
+      else $("#navbarMessageMobileNotificationLink").append('<span class="badge badge-pill badge-info" id="navbarMobileMessageNotificationBadge">1</span>')
     })
   </script>
 <% } %>

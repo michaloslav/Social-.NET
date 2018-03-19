@@ -1,0 +1,32 @@
+<% include ../_partials/head %>
+    <title>Write a new post</title>
+  </head>
+  <body>
+    <% include ../_partials/navbar %>
+    <div class="container my-2">
+      <form action="/post/newPost" method="POST">
+        <div class="row">
+          <div class="form-group">
+            <textarea name="postText" rows="8" cols="160" class="form-control" autofocus placeholder="Write your post here..." style="resize: none" id="postFormTextarea"></textarea>
+          </div>
+        </div>
+        <div class="row justify-content-center">
+          <div class="form-group col-3 col-sm-2 align-self-center">
+            <button class="form-control btn btn-primary" type="submit" id="postFormSubmit">Post</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <% include ../_partials/includeScripts %>
+    <script type="text/javascript">
+    $(() => {
+      //submit the post if the user hits enter
+      $("#postFormTextarea").on("keydown", (e) => {
+        if(e.which == 13 && e.ctrlKey){
+          $("#postFormSubmit").trigger("click");
+        }
+      })
+    })
+    </script>
+  </body>
+</html>

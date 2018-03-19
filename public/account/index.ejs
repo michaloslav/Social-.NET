@@ -11,7 +11,12 @@
             <% if(typeof isCurrentUser !== "undefined" && isCurrentUser){ %>
               <a href="/account/<%- username %>/edit" class="btn btn-primary float-right mt-2">Edit profile</a>
             <% } else{ %>
-              <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2">Send a message</a>
+              <a href="/messages/<%- username %>" class="btn btn-primary float-right mt-2 mx-2">Send a message</a>
+              <% if(typeof isFollowedByCurrentUser !== "undefined" && isFollowedByCurrentUser){ %>
+                <a href="/users/unfollow?currentUser=<%- currentUser %>&userID=<%- userID %>&userUsername=<%- username %>" class="btn btn-outline-danger float-right mt-2 mx-2">Unfollow</a>
+              <% } else{ %>
+                <a href="/users/follow?currentUser=<%- currentUser %>&userID=<%- userID %>&userUsername=<%- username %>" class="btn btn-outline-success float-right mt-2 mx-2">Follow</a>
+              <% } %>
             <% } %>
           <% } %>
         <% } %>

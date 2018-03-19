@@ -3,8 +3,37 @@
   </head>
   <body>
     <% include ../_partials/navbar %>
-    <% include ../_partials/jumbotron %>
-
+    <% if(typeof currentUser == "undefined"){ %>
+      <% include ../_partials/jumbotron %>
+    <% } %>
+    <div class="container my-2">
+      <% if(typeof posts !== "undefined"){%>
+        <% posts.forEach((post) => { %>
+          <div class="card w-100 my-2" style="width: 18rem; cursor: pointer;" onclick="document.location.href = '/post/?user=<%- post.userID %>&postid=<%- post.postID %>'; return false">
+            <div class="card-body row">
+              <div class="col-2 col-md-1">
+                <% if(typeof post.hasProfilePic !== "undefined" && post.hasProfilePic){ %>
+                  <img src="../_data/users/profilePics/<%- post.username %>.jpg" alt="" class="rounded" width="50px" height="50px">
+                <% } else{ %>
+                  <img src="../_icons/profilePicPlaceholder.png" alt="" class="rounded" width="50px" height="50px">
+                <% } %>
+              </div>
+              <div class="col">
+                <h5 class="card-title">
+                  <a href="/account/<%- post.username %>" style="text-decoration : none; color : #000000;" class="postUserLink"><%= post.username %></a>
+                </h5>
+                <p class="card-text"><%= post.text %></p>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
     <% include ../_partials/includeScripts %>
+    <script type="text/javascript">
+      $(".postUserLink").click(function (event) {
+        event.stopPropagation();
+      });
+    </script>
     </body>
   </html>

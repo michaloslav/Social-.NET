@@ -24,6 +24,12 @@
                   <p class="card-text font-weight-light">No bio</p>
                 <% } %>
                 <a href="/account/<%- result.username %>" class="btn btn-primary">See the profile</a>
+                <% if(result.followedByCurrentUser){ %>
+                  <p class="card-text font-weight-light text-center my-1">Following</p>
+                <% } %>
+                <% if(result.followsCurrentUser){ %>
+                  <p class="card-text font-weight-light text-center my-1">Follows you</p>
+                <% } %>
               </div>
             </div>
           <% }) %>
