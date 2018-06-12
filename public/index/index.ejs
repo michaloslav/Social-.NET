@@ -5,12 +5,13 @@
     <% include ../_partials/navbar %>
     <% if(typeof currentUser == "undefined"){ %>
       <% include ../_partials/jumbotron %>
-    <% } %>
+    <% } else{ %>
     <div class="container my-2">
-      <% if(typeof posts !== "undefined"){%>
+      <% if(typeof posts !== "undefined" && posts.length != 0){%>
         <% posts.forEach((post) => { %>
           <div class="card w-100 my-2" style="width: 18rem; cursor: pointer;" onclick="document.location.href = '/post/?user=<%- post.userID %>&postid=<%- post.postID %>'; return false">
             <div class="card-body row">
+              <a href="/account/<%- post.username %>" style="text-decoration : none; color : #000000;" class="postUserLink">
               <div class="col-2 col-md-1">
                 <% if(typeof post.hasProfilePic !== "undefined" && post.hasProfilePic){ %>
                   <img src="../_data/users/profilePics/<%- post.username %>.jpg" alt="" class="rounded" width="50px" height="50px">
@@ -18,22 +19,51 @@
                   <img src="../_icons/profilePicPlaceholder.png" alt="" class="rounded" width="50px" height="50px">
                 <% } %>
               </div>
+              </a>
               <div class="col">
                 <h5 class="card-title">
                   <a href="/account/<%- post.username %>" style="text-decoration : none; color : #000000;" class="postUserLink"><%= post.username %></a>
                 </h5>
                 <p class="card-text"><%= post.text %></p>
+                <img src="../_icons/likeEmpty.png" alt="Like" class="rounded" id="like:<%- post.userID %>:<%- post.postID %>" width="25px" height="25px" onclick="event.stopPropagation(); like(this.id);">
+                <img src="../_icons/likeEmpty.png" alt="Dislike" class="rounded" id="dislike:<%- post.userID %>:<%- post.postID %>" width="25px" height="25px" style="transform: rotate(180deg);" onclick="event.stopPropagation(); dislike(this.id);">
               </div>
             </div>
           </div>
         <% }) %>
+      <% } else{ %>
+        <!-- There are no posts to show the user -->
+        <h3 class="text-primary font-weight-light text-center text-uppercase">Welcome!</h3>
+        <p class="font-weight-light text-center lead">It looks like you're new here</p>
+        <p>Use the search bar to look up users you might know.<br>Follow them to see their posts on your timeline.</p>
       <% } %>
     </div>
     <% include ../_partials/includeScripts %>
-    <script type="text/javascript">
-      $(".postUserLink").click(function (event) {
-        event.stopPropagation();
-      });
-    </script>
+      <script type="text/javascript">
+        // set the currentUser
+        var currentUser = <%- currentUser %>
+        $(".postUserLink").click(function (event) {
+          event.stopPropagation();
+        });
+
+        // send the like signal
+        function like(userAndPostID){
+          socket.emit("like", {
+            userID: userAndPostID.split(":")[1],
+            postID: userAndPostID.split(":")[2],
+            currentUser: currentUser
+          })
+        }
+
+        // send the dislike signal
+        function dislike(userAndPostID){
+          socket.emit("dislike", {
+            userID: userAndPostID.split(":")[1],
+            postID: userAndPostID.split(":")[2],
+            currentUser: currentUser
+          })
+        }
+      </script>
+    <% } %>
     </body>
   </html>

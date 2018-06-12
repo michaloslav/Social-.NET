@@ -6,27 +6,51 @@
     <div class="container my-2">
       <div class="card w-100" style="width: 18rem; cursor: pointer;" onclick="document.location.href = '/post/?user=<%- post.userID %>&postid=<%- post.postID %>'; return false">
         <div class="card-body row">
-          <div class="col-2 col-md-1">
-            <% if(typeof post.hasProfilePic !== "undefined" && post.hasProfilePic){ %>
-              <img src="../_data/users/profilePics/<%- post.username %>.jpg" alt="" class="rounded" width="50px" height="50px">
-            <% } else{ %>
-              <img src="../_icons/profilePicPlaceholder.png" alt="" class="rounded" width="50px" height="50px">
-            <% } %>
-          </div>
+          <a href="/account/<%- post.username %>" style="text-decoration : none; color : #000000;" class="postUserLink">
+            <div class="col-2 col-md-1">
+              <% if(typeof post.hasProfilePic !== "undefined" && post.hasProfilePic){ %>
+                <img src="../_data/users/profilePics/<%- post.username %>.jpg" alt="" class="rounded" width="50px" height="50px">
+              <% } else{ %>
+                <img src="../_icons/profilePicPlaceholder.png" alt="" class="rounded" width="50px" height="50px">
+              <% } %>
+            </div>
+          </a>
           <div class="col">
             <h5 class="card-title">
               <a href="/account/<%- post.username %>" style="text-decoration : none; color : #000000;" class="postUserLink"><%= post.username %></a>
             </h5>
             <p class="card-text"><%= post.text %></p>
+            <img src="../_icons/likeEmpty.png" alt="Like" class="rounded" id="like:<%- post.userID %>:<%- post.postID %>" width="25px" height="25px" onclick="event.stopPropagation(); like(this.id);">
+            <img src="../_icons/likeEmpty.png" alt="Dislike" class="rounded" id="dislike:<%- post.userID %>:<%- post.postID %>" width="25px" height="25px" style="transform: rotate(180deg);" onclick="event.stopPropagation(); dislike(this.id);">
           </div>
         </div>
       </div>
     </div>
     <% include ../_partials/includeScripts %>
     <script type="text/javascript">
+      // set the currentUser
+      var currentUser = <%= typeof currentUser  != "undefined" ? currentUser : "null" %>;
       $(".postUserLink").click(function (event) {
         event.stopPropagation();
       });
+
+      // send the like signal
+      function like(userAndPostID){
+        socket.emit("like", {
+          userID: userAndPostID.split(":")[1],
+          postID: userAndPostID.split(":")[2],
+          currentUser: currentUser
+        })
+      }
+
+      // send the dislike signal
+      function dislike(userAndPostID){
+        socket.emit("dislike", {
+          userID: userAndPostID.split(":")[1],
+          postID: userAndPostID.split(":")[2],
+          currentUser: currentUser
+        })
+      }
     </script>
   </body>
 </html>

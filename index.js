@@ -1,3 +1,6 @@
+//// CREATE THE SQL TABLES FIRST
+//// ADD LIKING AND COMMENTING TO POSTS
+
 const express = require("express"),
       app = express(),
       bodyParser = require("body-parser"),
@@ -13,7 +16,9 @@ const express = require("express"),
       fs = require("fs"),
       jimp = require("jimp"),
       metaphone = require("metaphone"),
-      stemmer = require("stemmer");
+      stemmer = require("stemmer"),
+      crypto = require("crypto");
+
 
 // connect to mysql
 const con = mysql.createConnection({
@@ -23,7 +28,7 @@ const con = mysql.createConnection({
   database: "node_social_net"
 })
 con.connect((err) => {
-  if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+  if(err) throw err;
 })
 
 //my SQL session store
@@ -53,7 +58,10 @@ app.use(session({
 //update the metaphone in the database
 function updateMetaphone(username){
   con.query("SELECT * FROM users WHERE username = ?", [username], (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
     var newMetaphone = metaphone(stemmer([result[0].username, result[0].bio].join(" ")));
 
     // if there are numbers, add them to the metaphone
@@ -65,7 +73,10 @@ function updateMetaphone(username){
     }
 
     con.query("UPDATE users SET metaphone = ? WHERE ID = ?", [newMetaphone, result[0].ID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
     })
   })
 }
@@ -81,7 +92,10 @@ function addToRecentlyTexted(userID, otherUser){
       case 0:
         con.query("INSERT INTO recentlytexted(ID, usernames) VALUES (?, ?)", [userID, JSON.stringify([otherUser])],
         (err, result) =>{
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
         })
 
         break;
@@ -106,7 +120,10 @@ function addToRecentlyTexted(userID, otherUser){
 
         con.query("UPDATE recentlytexted SET usernames = ? WHERE ID = ?", [JSON.stringify(usernames), userID],
         (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
         })
 
         break;
@@ -118,16 +135,43 @@ function addToRecentlyTexted(userID, otherUser){
   })
 }
 
+
+// encrypt the password
+
+function generateRandomString(length){
+  // generate random bytes, convert them to hexadecimal and then slice the result so that it is the correct length
+  return crypto.randomBytes(Math.ceil(length/2)).toString("hex").slice(0, length);
+}
+
+function sha512(text, salt){
+  var hash = crypto.createHmac("sha512", salt);
+  hash.update(text);
+  return hash.digest("hex");
+}
+
+function saltHashPassword(password){
+  var salt = generateRandomString(16)
+  return {
+    hash: sha512(password, salt),
+    salt: salt
+  }
+}
+
+// decrypt the password
+function checkThePassword(password, hashedPassword, salt){
+  return sha512(password, salt) == hashedPassword;
+}
+
+
 // uncomment to update ALL metaphones
 /*
 con.query("SELECT * FROM users", (err, result) => {
-  if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+  if(err) throw err;
   for(var i in result){
     updateMetaphone(result[i].username);
   }
 })
 */
-
 
 // init the list of clients
 var sockets = {};
@@ -138,47 +182,72 @@ app.get("/", (req, res) => {
 
     con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
     [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       let messageNotificationCount = result.length;
 
       con.query("SELECT following FROM following WHERE userID = ?", [req.session.userID], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
 
         let followedUsers = (result.length != 0 && typeof result[0] !== "undefined") ? JSON.parse(result[0].following) : [];
 
         // get the posts from the database
         // CHRONOLOGICAL ORDER (NOT MACHINE LEARNING), SHOWS POSTS FROM EVERYONE ON THE WEBSITE
         con.query("SELECT * FROM posts WHERE fromUser IN (?, ?) ORDER BY timestamp DESC", [followedUsers.join(", "), req.session.userID], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           var postsFromTheDatabase = result;
 
-          // get additional info for each of the posts
-          postsFromTheDatabase.forEach((post) => {
-            // separate the post and user IDs
-            post.userID = post.ID.split(":")[0];
-            post.postID = post.ID.split(":")[1];
-
-            // get the username of each of the users
-            con.query("SELECT username, hasProfilePic FROM users WHERE ID = ?", [post.userID], (err, result) => {
-              if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
-
-              post.username = result[0].username;
-              post.hasProfilePic = result[0].hasProfilePic;
-
-              // if this is the last iteration, continue with the actions
-              if(post == postsFromTheDatabase[postsFromTheDatabase.length - 1]){
-
-                res.render("index", {
-                  currentUser: req.session.userID,
-                  messageNotificationCount: messageNotificationCount,
-                  activePage: "index",
-                  posts: postsFromTheDatabase
-                })
-              }
+          // if there are no posts to show the user...
+          if(postsFromTheDatabase.length == 0){
+            res.render("index", {
+              currentUser: req.session.userID,
+              messageNotificationCount: messageNotificationCount,
+              activePage: "index",
+              posts: postsFromTheDatabase
             })
-          })
+          }
+
+          else{
+
+            // get additional info for each of the posts
+            postsFromTheDatabase.forEach((post) => {
+              // separate the post and user IDs
+              post.userID = post.ID.split(":")[0];
+              post.postID = post.ID.split(":")[1];
+
+              // get the username of each of the users
+              con.query("SELECT username, hasProfilePic FROM users WHERE ID = ?", [post.userID], (err, result) => {
+                if(err){
+                  console.error(err);
+                  res.redirect("/error?additionalInfo=" + encodeURI(err));
+                }
+
+                post.username = result[0].username;
+                post.hasProfilePic = result[0].hasProfilePic;
+
+                // if this is the last iteration, continue with the actions
+                if(post == postsFromTheDatabase[postsFromTheDatabase.length - 1]){
+
+                  res.render("index", {
+                    currentUser: req.session.userID,
+                    messageNotificationCount: messageNotificationCount,
+                    activePage: "index",
+                    posts: postsFromTheDatabase
+                  })
+                }
+              })
+            })
+          }
         })
       })
     })
@@ -204,7 +273,10 @@ app.get("/terms", (req, res) => {
 
     con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
     [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       let messageNotificationCount = result.length;
 
@@ -224,7 +296,10 @@ app.get("/about", (req, res) => {
 
     con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
     [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       let messageNotificationCount = result.length;
 
@@ -255,7 +330,10 @@ app.get("/account/:username", (req, res) => {
 
   //check if the username exists in the database
   con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     //the username exists
     if(result.length == 1){
@@ -272,12 +350,18 @@ app.get("/account/:username", (req, res) => {
 
         con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
         [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           let messageNotificationCount = result.length;
 
           con.query("SELECT following FROM following WHERE userID = ?", [req.session.userID], (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
 
             let isFollowedByCurrentUser = (!isCurrentUser && result.length != 0) ? JSON.parse(result[0].following).includes(userID) : null;
 
@@ -312,7 +396,10 @@ app.get("/account/:username/edit", (req, res) => {
 
   //check if the username exists in the database
   con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     //the username exists and it's the user who is currently logged in
     if(result.length == 1 && req.session.username && req.session.username == result[0].username){
@@ -324,7 +411,10 @@ app.get("/account/:username/edit", (req, res) => {
 
       con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
       [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
 
         let messageNotificationCount = result.length;
 
@@ -375,14 +465,20 @@ app.all("/users/newAccount", [
 
     // check if the username has already been used
     con.query("SELECT * FROM users WHERE username = ?", [req.body.username] , (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
       if(result.length > 0) {
         errorsWhileCreatingTheAccount.username = "The username has already been used";
       }
 
       // check if the email has already been used
       con.query("SELECT * FROM users WHERE email = ?", [req.body.email], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
         if(result.length > 0) {
             errorsWhileCreatingTheAccount.email = "The email has already been used";
         }
@@ -402,14 +498,21 @@ app.all("/users/newAccount", [
           if(req.body.gender == "other") var genderChar = "O";
 
           //create the account
-          con.query("INSERT INTO users(username, email, password, gender, metaphone) VALUES(?, ?, ?, ?, ?)",
-          [req.body.username, req.body.email, req.body.password, genderChar, metaphone(stemmer(req.body.username))],
+          var passwordHashObject = saltHashPassword(req.body.password);
+          con.query("INSERT INTO users(username, email, password, salt, gender, metaphone) VALUES(?, ?, ?, ?, ?, ?)",
+          [req.body.username, req.body.email, passwordHashObject.hash, passwordHashObject.salt, genderChar, metaphone(stemmer(req.body.username))],
           (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
 
             //log in
             con.query("SELECT ID FROM users WHERE username = ?", [req.body.username], (err, result) => {
-              if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+              if(err){
+                console.error(err);
+                res.redirect("/error?additionalInfo=" + encodeURI(err));
+              }
               req.session.userID = result[0].ID;
               req.session.username = req.body.username;
               res.redirect("/account/" + req.body.username);
@@ -425,13 +528,16 @@ app.all("/users/newAccount", [
 app.all("/users/login", (req, res) => {
   con.query("SELECT * FROM users WHERE username = ? OR email = ?", [req.body.usernameOrEmail, req.body.usernameOrEmail],
   (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     //username or email is correct
     if(result.length > 0){
 
       //password is correct too -> log in
-      if(result[0].password == req.body.password){
+      if(checkThePassword(req.body.password, result[0].password, result[0].salt)){
         req.session.userID = result[0].ID;
         req.session.username = result[0].username;
         res.redirect("/account/" + result[0].username);
@@ -458,7 +564,10 @@ app.all("/users/login", (req, res) => {
 
 app.get("/users/logout", (req, res) => {
   req.session.regenerate((err) =>{
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
     res.redirect("/")
   })
 })
@@ -467,7 +576,10 @@ app.post("/users/:username/edit", (req, res) => {
 
   //check if the username exists in the database
   con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     //the username exists and it's the user who is currently logged in
     if(result.length == 1 && req.session.username && req.session.username == result[0].username){
@@ -483,7 +595,10 @@ app.post("/users/:username/edit", (req, res) => {
         path.join(__dirname, "public/_data/users/profilePics/" + req.session.username + ".jpg"), (err) => {
           if (err) throw err;
           con.query("UPDATE users SET hasProfilePic = 1 WHERE ID = ?", [req.session.userID], (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
           })
         });
       }
@@ -497,7 +612,10 @@ app.post("/users/:username/edit/profilePic", (req, res) => {
 
   //check if the username exists in the database
   con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     //the username exists and it's the user who is currently logged in
     if(result.length == 1 && req.session.username && req.session.username == result[0].username){
@@ -507,7 +625,10 @@ app.post("/users/:username/edit/profilePic", (req, res) => {
       form.keepExtensions = true;
       form.uploadDir = "data/temp"
       form.parse(req, (err, fields, files) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
       });
       form.on("file", (field, file) => {
 
@@ -521,7 +642,10 @@ app.post("/users/:username/edit/profilePic", (req, res) => {
 
         //convert the image
         jimp.read(imgPath, (err, img) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
           img.resize(256, 256)
              .quality(60)
              .write(imgPath.split(".").slice(0, -1).join(".") + ".jpg");
@@ -549,7 +673,10 @@ app.get("/search", (req, res) => {
   }
 
   con.query("SELECT * FROM users WHERE metaphone LIKE ?", ["%" + searchQuery + "%"], (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
     var searchResults = [];
     if(result.length > 0){
       for(var i in result){
@@ -565,7 +692,10 @@ app.get("/search", (req, res) => {
         // check if the current user follows the users in searchResults
         searchResults.forEach((searchResult) => {
           con.query("SELECT following FROM following WHERE userID = ?", [req.session.userID], (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
 
             // if the current user follows anyone...
             if(result.length != 0){
@@ -575,7 +705,10 @@ app.get("/search", (req, res) => {
 
             // check if the user from the searchResut follows the currentUser
             con.query("SELECT following FROM following WHERE userID = ?", [searchResult.userID], (err, result) => {
-              if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+              if(err){
+                console.error(err);
+                res.redirect("/error?additionalInfo=" + encodeURI(err));
+              }
 
               // if the user follows anyone...
               if(result.length != 0){
@@ -611,15 +744,31 @@ app.get("/messages", (req, res) => {
 
   // get the ID of the person that the user last texted/was texted from
   con.query("SELECT usernames FROM recentlytexted WHERE ID = ?", [req.session.userID], (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
-    // get the username of the first person in the array
-    con.query("SELECT username FROM users WHERE ID = ?", [JSON.parse(result[0].usernames)[0]], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    // if there isn't a recentlytexted field for the currentUser...
+    if(result.length == 0){
+      res.render("noMessagesYet", {
+        currentUser: req.session.userID,
+        messageNotificationCount: 0
+      })
+    }
 
-      // redirect
-      res.redirect("/messages/" + result[0].username);
-    })
+    else{
+      // get the username of the first person in the array
+      con.query("SELECT username FROM users WHERE ID = ?", [JSON.parse(result[0].usernames)[0]], (err, result) => {
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
+
+        // redirect
+        res.redirect("/messages/" + result[0].username);
+      })
+    }
   })
 })
 
@@ -635,7 +784,10 @@ app.get("/messages/:username", (req, res) => {
 
     // check if the username in the URL is real
     con.query("SELECT * FROM users WHERE username = ?", [req.params.username], (err, result) =>{
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       if(result.length == 0) {
         res.redirect("/");
@@ -649,13 +801,19 @@ app.get("/messages/:username", (req, res) => {
 
         // get the recentlytexted
         con.query("SELECT usernames FROM recentlytexted WHERE ID = ?", [req.session.userID], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           var recentlyTextedIDs = result.length == 1 ? JSON.parse(result[0].usernames) : [toUser];
 
           // get the actual usernames from the IDs (the recentlytexted table only contains ID numbers)
           con.query("SELECT ID, username FROM users WHERE ID IN(" + recentlyTextedIDs.join(",") + ") ORDER BY FIELD(ID, " + recentlyTextedIDs.join(",") + ")", (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
 
             var recentlyTexted = [];
             result.forEach((row) => {
@@ -667,7 +825,10 @@ app.get("/messages/:username", (req, res) => {
             // get the messages
             con.query("SELECT * FROM messages WHERE ID LIKE ? ORDER BY `messages`.`sentTime` ASC",
             [messageLikeStatement], (err, result) => {
-              if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+              if(err){
+                console.error(err);
+                res.redirect("/error?additionalInfo=" + encodeURI(err));
+              }
               var messages = [];
               result.forEach((row) => {
                 messages.push({fromOrTo: (row.fromUser == req.session.userID ? "From" : "To"),
@@ -678,7 +839,10 @@ app.get("/messages/:username", (req, res) => {
               // get the unseen messages for each of the users
               con.query("SELECT message, fromUser FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
               [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-                if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+                if(err){
+                  console.error(err);
+                  res.redirect("/error?additionalInfo=" + encodeURI(err));
+                }
                 let messageNotificationCount = result.length;
 
                 // unseen messages for each user separately
@@ -708,7 +872,10 @@ app.get("/messages/:username", (req, res) => {
         // update the seen parameter
         con.query("UPDATE messages SET seen = 1 WHERE fromUser = ? AND ID LIKE ? AND seen = 0",
         [toUser, messageLikeStatement], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
         })
       }
     })
@@ -720,7 +887,10 @@ app.get("/newPost", (req, res) => {
 
     con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
     [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       let messageNotificationCount = result.length;
 
@@ -739,13 +909,19 @@ app.post("/post/newPost", (req, res) => {
 
   // get the post counter
   con.query("SELECT counter FROM postcounter WHERE ID = ?", [req.session.userID], (err, result) => {
-    if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+    if(err){
+      console.error(err);
+      res.redirect("/error?additionalInfo=" + encodeURI(err));
+    }
 
     // if the counter doesn't exit, create it
     if(result.length == 0){
       var postID = req.session.userID + ":1"
       con.query("INSERT INTO postcounter(ID, counter) VALUES (?, 1)", [req.session.userID], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
       })
     }
 
@@ -753,13 +929,19 @@ app.post("/post/newPost", (req, res) => {
     else{
       var postID = req.session.userID + ":" + (Number(result[0].counter) + 1);
       con.query("UPDATE postcounter SET counter = counter + 1 WHERE ID = ?", [req.session.userID], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
       })
     }
 
     // store the post itself
     con.query("INSERT INTO posts(ID, text, fromUser) VALUES (?, ?, ?)", [postID, req.body.postText, req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
     })
 
     res.redirect("/");
@@ -773,7 +955,10 @@ app.get("/post", (req, res) => {
 
   else{
     con.query("SELECT * FROM posts WHERE ID = ?", [req.query.user + ":" + req.query.postid], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       // if the post doesn't exit, redirect
       if(result.length == 0) res.redirect("/")
@@ -787,7 +972,10 @@ app.get("/post", (req, res) => {
 
         // get the poster's username
         con.query("SELECT username, hasProfilePic FROM users WHERE ID = ?", [req.query.user], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           postFromTheDatabase.username = result[0].username;
           postFromTheDatabase.hasProfilePic = result[0].hasProfilePic;
@@ -797,7 +985,10 @@ app.get("/post", (req, res) => {
 
             con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
             [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-              if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+              if(err){
+                console.error(err);
+                res.redirect("/error?additionalInfo=" + encodeURI(err));
+              }
 
               let messageNotificationCount = result.length;
 
@@ -825,13 +1016,19 @@ app.get("/users/follow", (req, res) => {
   if(req.session.userID != req.query.currentUser) res.end();
   else{
     con.query("SELECT following FROM following WHERE userID = ?", [req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       // if the currentUser isn't in the following table yet, create a field for them
       if(result.length == 0){
         con.query("INSERT INTO following(userID, following) VALUES(?, ?)",
         [req.session.userID, JSON.stringify([Number(req.query.userID)])], (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           res.redirect("/account/" + req.query.userUsername);
         })
@@ -843,7 +1040,10 @@ app.get("/users/follow", (req, res) => {
         following.push(Number(req.query.userID));
         con.query("UPDATE following SET following = ? WHERE userID = ?", [JSON.stringify(following), req.session.userID],
         (err, result) => {
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           res.redirect("/account/" + req.query.userUsername);
         })
@@ -857,7 +1057,10 @@ app.get("/users/unfollow", (req, res) => {
   if(req.session.userID != req.query.currentUser) res.redirect("/error?message=CannotUnfollow");
   else{
     con.query("SELECT following FROM following WHERE userID = ?", [req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       // if the currentUser isn't in the following that means they don't follow anyone -> they can't unfollow -> redirect
       if(result.length == 0) res.redirect("/error?message=CannotUnfollow");
@@ -873,7 +1076,10 @@ app.get("/users/unfollow", (req, res) => {
           }
           con.query("UPDATE following SET following = ? WHERE userID = ?", [JSON.stringify(following), req.session.userID],
           (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
 
             res.redirect("/account/" + req.query.userUsername);
           })
@@ -893,7 +1099,10 @@ app.get("/error", (req, res) => {
 
     con.query("SELECT message FROM messages WHERE seen = 0 AND (ID LIKE ? OR ID LIKE ?) AND NOT fromUser = ?",
     [req.session.userID + ":%", "%:" + req.session.userID + ":%", req.session.userID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       let messageNotificationCount = result.length;
 
@@ -948,7 +1157,10 @@ io.on("connection", (socket) => {
   socket.on("validateTheUsername", (data) => {
     // check if the username has already been used
     con.query("SELECT * FROM users WHERE username = ?", [data.username], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
       if(result.length > 0) {
         socket.emit("validateTheUsernameErrors", {error: "The username has already been used"});
       }
@@ -957,7 +1169,10 @@ io.on("connection", (socket) => {
   socket.on("validateTheEmail", (data) => {
     // check if the username has already been used
     con.query("SELECT * FROM users WHERE email = ?", [data.email], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
       if(result.length > 0) {
         socket.emit("validateTheEmailErrors", {error: "The email has already been used"});
       }
@@ -1005,14 +1220,20 @@ io.on("connection", (socket) => {
       var usersID = (toUser > fromUser ? fromUser + ":" + toUser : toUser + ":" + fromUser);
 
       con.query("SELECT counter FROM messagecounter WHERE ID = ?", [usersID], (err, result) => {
-        if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+        if(err){
+          console.error(err);
+          res.redirect("/error?additionalInfo=" + encodeURI(err));
+        }
 
         // if there isn't a message counter yet, create one
         if(result.length == 0){
 
           var messageID = usersID + ":1";
           con.query("INSERT INTO messagecounter(ID, counter) VALUES (?, ?)", [usersID, 1], (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
           })
         }
 
@@ -1022,14 +1243,20 @@ io.on("connection", (socket) => {
           var messageID = usersID + ":" + result[0].counter;
 
           con.query("UPDATE messagecounter SET counter = counter + 1 WHERE ID = ?", [usersID], (err, result) => {
-            if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+            if(err){
+              console.error(err);
+              res.redirect("/error?additionalInfo=" + encodeURI(err));
+            }
           })
         }
 
         // save the actual message
         con.query("INSERT INTO messages(ID, message, fromUser) VALUES(?, ?, ?)",
         [messageID, data.message, data.fromUser], (err, result) =>{
-          if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+          if(err){
+            console.error(err);
+            res.redirect("/error?additionalInfo=" + encodeURI(err));
+          }
 
           // if the other user is online, emit the message to them
           io.to(sockets[toUser]).emit("messageReceived", {
@@ -1051,7 +1278,10 @@ io.on("connection", (socket) => {
 
   socket.on("messageSeen", (data) => {
     con.query("UPDATE messages SET seen = 1 WHERE ID = ?", [data.messageID], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
     })
   })
 
@@ -1059,13 +1289,26 @@ io.on("connection", (socket) => {
   socket.on("messageReceivedNotInTheRecentlyTextedList", (data) => {
     // get the username of the fromUser
     con.query("SELECT username FROM users WHERE ID = ?", [data.fromUser], (err, result) => {
-      if(err) res.redirect("/error?additionalInfo=" + encodeURI(err));
+      if(err){
+        console.error(err);
+        res.redirect("/error?additionalInfo=" + encodeURI(err));
+      }
 
       socket.emit("messageReceivedNotInTheRecentlyTextedListResponse", {
         fromUser: data.fromUser,
         fromUserUsername: result[0].username
       })
     })
+  })
+
+  // like a post
+  socket.on("like", (data) => {
+
+  })
+
+  //dislike a post
+  socket.on("dislike", (data) => {
+
   })
 })
 
